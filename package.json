@@ -1,0 +1,12 @@
+{
+  "name": "jumpy_game",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:web": "gleam run -m lustre/dev build --minify",
+    "preview": "python3 -m http.server 4173 -d dist"
+  },
+  "dependencies": {
+    "three": "0.180.0"
+  }
+}

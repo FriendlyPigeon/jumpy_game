@@ -21,7 +21,11 @@ jobs:
           wget https://github.com/gleam-lang/gleam/releases/download/v1.16.0/gleam-v1.16.0-x86_64-unknown-linux-musl.tar.gz
           tar xf gleam-v1.16.0-x86_64-unknown-linux-musl.tar.gz
           chmod +x gleam
+          mkdir -p ~/.local/bin
           mv gleam ~/.local/bin/
+
+      - name: Add Gleam to PATH
+        run: echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Build project
         run: gleam run -m lustre/dev build --minify

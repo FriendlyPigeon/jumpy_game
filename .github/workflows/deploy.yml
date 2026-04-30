@@ -25,6 +25,10 @@ jobs:
           rebar3-version: "3"
       - name: Install dependencies
         run: gleam deps download
+      - name: Install bun
+        run: curl -fsSL https://bun.com/install | bash
+      - name: Install bun dependencies
+        run: bun install
       - name: Build app
         run: gleam run -m lustre/dev build --minify --outdir=dist
       - name: Setup Pages

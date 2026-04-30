@@ -2,36 +2,37 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
-
-permissions:
-  contents: write
-  pages: write
-  id-token: write
+    branches:
+      - main
 
 jobs:
-  build:
+  deploy:
+    name: Deploy to GitHub Pages
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: read
+      deployments: write
+      pages: write
+      id-token: write
     steps:
-      - uses: actions/checkout@v4
-
-      # - name: Install Gleam
-      #   run: |
-      #     wget https://github.com/gleam-lang/gleam/releases/download/v1.16.0/gleam-v1.16.0-x86_64-unknown-linux-musl.tar.gz
-      #     tar xf gleam-v1.16.0-x86_64-unknown-linux-musl.tar.gz
-      #     chmod +x gleam
-      #     mkdir -p ~/.local/bin
-      #     mv gleam ~/.local/bin/
-
-      # - name: Add Gleam to PATH
-      #   run: echo "$HOME/.local/bin" >> $GITHUB_PATH
-
-      # - name: Build project
-      #   run: gleam run -m lustre/dev build --minify
-
-      - name: Deploy
-        uses: peaceiris/actions-gh-pages@v3
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      - name: Set up Gleam
+        uses: erlef/setup-beam@v1
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./dist
+          otp-version: "28.0"
+          gleam-version: "1.12.0"
+          rebar3-version: "3"
+      - name: Install dependencies
+        run: gleam deps download
+      - name: Build app
+        run: gleam run -m lustre/dev build --minify --outdir=dist
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "dist"
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

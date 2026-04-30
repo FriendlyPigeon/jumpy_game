@@ -18,8 +18,10 @@ jobs:
 
       - name: Install Gleam
         run: |
-          curl -fsSL https://gleam.run/install.sh | sh
-          echo "$HOME/.gleam/bin" >> $GITHUB_PATH
+          wget https://github.com/gleam-lang/gleam/releases/download/v1.14.0/gleam-v1.14.0-aarch64-unknown-linux-musl.tar.gz
+          tar xf gleam-v1.14.0-x86_64_unknown-linux-musl.tar.gz
+          chmod +x gleam
+          mv gleam ~/.local/bin/
 
       - name: Build project
         run: gleam run -m lustre/dev build --minify

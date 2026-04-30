@@ -329,9 +329,25 @@ pub fn on_mousedown(msg: fn(MouseButton) -> msg) -> Attribute(msg) {
   })
 }
 
+/// Lustre attribute that listens for pointerdown events and provides the button.
+pub fn on_pointerdown(msg: fn(MouseButton) -> msg) -> Attribute(msg) {
+  event.on("pointerdown", {
+    use button_int <- decode.field("button", decode.int)
+    button_int |> int_to_button |> msg |> decode.success
+  })
+}
+
 /// Lustre attribute that listens for mouseup events and provides the button.
 pub fn on_mouseup(msg: fn(MouseButton) -> msg) -> Attribute(msg) {
   event.on("mouseup", {
+    use button_int <- decode.field("button", decode.int)
+    button_int |> int_to_button |> msg |> decode.success
+  })
+}
+
+/// Lustre attribute that listens for pointerup events and provides the button.
+pub fn on_pointerup(msg: fn(MouseButton) -> msg) -> Attribute(msg) {
+  event.on("pointerup", {
     use button_int <- decode.field("button", decode.int)
     button_int |> int_to_button |> msg |> decode.success
   })

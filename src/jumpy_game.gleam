@@ -39,9 +39,10 @@ type Model {
     in_air: Bool,
     flying_velocity: vec2.Vec2(Float),
     platform_positions: List(Platform),
-    scored_platform_ids: List(Int),
+    last_scored_platform_id: Int,
     next_platform_id: Int,
     score: Int,
+    extra_lives: Int,
   )
 }
 
@@ -126,9 +127,15 @@ fn shift_screen_if_needed(model: Model) -> Model {
 }
 
 fn check_reset(model: Model) -> Model {
-  case box_touching_border(model.player_position) {
-    True -> initial_model()
-    False -> model
+  case box_touching_border(model.player_position), model.extra_lives > 0 {
+    True, False -> initial_model()
+    True, True ->
+      Model(
+        ..initial_model(),
+        extra_lives: model.extra_lives - 1,
+        score: model.score,
+      )
+    False, _ -> model
   }
 }
 
@@ -139,12 +146,13 @@ fn initial_model() -> Model {
     input: input.new(),
     charged_velocity: 0.0,
     score: 0,
+    extra_lives: 0,
     in_air: True,
     flying_velocity: vec2.Vec2(0.0, 0.0),
     platform_positions: [
       Platform(0, vec3.Vec3(-250.0, -20.0, 0.0)),
     ],
-    scored_platform_ids: [],
+    last_scored_platform_id: 0,
     next_platform_id: 2,
   )
 }
@@ -170,28 +178,37 @@ fn update_physics(model: Model, ctx: renderer.Tick) -> Model {
         False ->
           case player_touching_platform(model) {
             // ... and just landed on platform
-            True ->
-              case
-                score_platform_if_first_time(
-                  model.scored_platform_ids,
-                  get_closest_platform(model).id,
-                )
+            True -> {
+              let closest_platform_id = get_closest_platform(model).id
+              let new_score = case
+                model.last_scored_platform_id == closest_platform_id
               {
-                #(score_delta, scored_platform_ids) -> {
-                  let landed_platform = get_closest_platform(model)
-
-                  maybe_spawn_rightmost_platform(
-                    Model(
-                      ..model,
-                      in_air: False,
-                      flying_velocity: vec2.Vec2(0.0, 0.0),
-                      score: model.score + score_delta,
-                      scored_platform_ids: scored_platform_ids,
-                    ),
-                    landed_platform,
-                  )
-                }
+                True -> model.score
+                False -> model.score + 1
               }
+              let new_extra_lives = case
+                int.modulo(new_score, 10),
+                new_score != model.score
+              {
+                Ok(0), True -> model.extra_lives + 1
+                Ok(_), _ -> model.extra_lives
+                Error(_), _ -> model.extra_lives
+              }
+
+              let landed_platform = get_closest_platform(model)
+
+              maybe_spawn_rightmost_platform(
+                Model(
+                  ..model,
+                  in_air: False,
+                  flying_velocity: vec2.Vec2(0.0, 0.0),
+                  score: new_score,
+                  last_scored_platform_id: closest_platform_id,
+                  extra_lives: new_extra_lives,
+                ),
+                landed_platform,
+              )
+            }
             // ... and still flying
             False ->
               Model(
@@ -210,7 +227,7 @@ fn update_physics(model: Model, ctx: renderer.Tick) -> Model {
       }
     // on ground...
     False ->
-      case input.is_pressed(model.input, input.Space) {
+      case jump_charge_held(model.input) {
         // ... and charging jump still
         True ->
           Model(
@@ -232,18 +249,9 @@ fn update_physics(model: Model, ctx: renderer.Tick) -> Model {
   }
 }
 
-fn score_platform_if_first_time(
-  scored_platform_ids: List(Int),
-  platform_id: Int,
-) -> #(Int, List(Int)) {
-  case
-    list.any(scored_platform_ids, fn(scored_platform_id) {
-      scored_platform_id == platform_id
-    })
-  {
-    True -> #(0, scored_platform_ids)
-    False -> #(1, [platform_id, ..scored_platform_ids])
-  }
+fn jump_charge_held(input_state: input.InputState) -> Bool {
+  input.is_pressed(input_state, input.Space)
+  || input.is_mouse_pressed(input_state, input.LeftButton)
 }
 
 fn maybe_spawn_rightmost_platform(
@@ -352,7 +360,12 @@ fn box_touching_border(position: vec3.Vec3(Float)) -> Bool {
 fn view(model: Model) {
   html.div([attribute.style("max-width", "800px")], [
     html.h1([attribute.style("text-align", "center")], [
-      html.text("Score: " <> int.to_string(model.score)),
+      html.text(
+        "Score: "
+        <> int.to_string(model.score)
+        <> " Lives: "
+        <> int.to_string(model.extra_lives),
+      ),
     ]),
     html.div([attribute.class("progress-bar-container")], [
       html.div(
@@ -378,6 +391,7 @@ fn view(model: Model) {
         input.on_mousedown(MouseDown),
         input.on_mouseup(MouseUp),
         attribute.attribute("tabindex", "0"),
+        attribute.style("touch-action", "none"),
       ],
       [
         tiramisu.scene("scene", [scene.background_color(0xffffff)], [

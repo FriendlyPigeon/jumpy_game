@@ -362,6 +362,10 @@ pub fn on_wheel(msg: fn(Float) -> msg) -> Attribute(msg) {
   })
 }
 
+pub fn on_contextmenu(msg: msg) -> Attribute(msg) {
+  event.on("contextmenu", msg |> decode.success)
+}
+
 // INTERNAL --------------------------------------------------------------------
 
 /// Convert a JS mouse button integer to a MouseButton.

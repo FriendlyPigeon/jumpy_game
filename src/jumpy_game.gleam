@@ -52,6 +52,7 @@ type Msg {
   KeyUp(input.Key)
   MouseDown(input.MouseButton)
   MouseUp(input.MouseButton)
+  ContextMenu
   PlayerLandedPlatform
 }
 
@@ -90,6 +91,7 @@ fn update(model: Model, msg: Msg) -> #(Model, effect.Effect(Msg)) {
       Model(..model, input: input.mouse_up(model.input, button)),
       effect.none(),
     )
+    ContextMenu -> #(model, effect.none())
     PlayerLandedPlatform -> {
       #(Model(..model, in_air: False), effect.none())
     }
@@ -386,10 +388,10 @@ fn view(model: Model) {
         renderer.on_tick(Tick),
         renderer.width(800),
         renderer.height(500),
-        event.prevent_default(input.on_keydown(KeyDown)),
+        event.prevent_default(input.on_contextmenu(ContextMenu)),
         input.on_keyup(KeyUp),
-        input.on_mousedown(MouseDown),
-        input.on_mouseup(MouseUp),
+        input.on_pointerdown(MouseDown),
+        input.on_pointerup(MouseUp),
         attribute.attribute("tabindex", "0"),
         attribute.style("touch-action", "none"),
       ],

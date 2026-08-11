@@ -16,8 +16,31 @@ import tiramisu/scene
 import tiramisu/transform
 import vec/vec2
 import vec/vec3
+import viewport
 
 const max_charge = 5.0
+
+const player_anchor_x = -360.0
+
+const horizontal_speed_per_charge = 150.0
+
+const gravity = 3750.0
+
+const max_frame_delta_seconds = 0.1
+
+const renderer_max_width = 800
+
+const renderer_max_height = 500
+
+const renderer_aspect_width = 8
+
+const renderer_aspect_height = 5
+
+const page_horizontal_padding = 24
+
+const interface_height = 120
+
+const platform_removal_x = -500.0
 
 type Platform {
   Platform(id: Int, position: vec3.Vec3(Float))
@@ -43,6 +66,8 @@ type Model {
     next_platform_id: Int,
     score: Int,
     extra_lives: Int,
+    renderer_width: Int,
+    renderer_height: Int,
   )
 }
 
@@ -52,12 +77,22 @@ type Msg {
   KeyUp(input.Key)
   MouseDown(input.MouseButton)
   MouseUp(input.MouseButton)
+  InputCancelled
+  ViewportChanged(Int, Int)
   ContextMenu
   PlayerLandedPlatform
 }
 
 fn init(_flags: Nil) -> #(Model, effect.Effect(Msg)) {
-  #(initial_model(), effect.none())
+  #(
+    initial_model(),
+    effect.from(fn(dispatch) {
+      viewport.subscribe(
+        fn(width, height) { dispatch(ViewportChanged(width, height)) },
+        fn() { dispatch(InputCancelled) },
+      )
+    }),
+  )
 }
 
 fn update(model: Model, msg: Msg) -> #(Model, effect.Effect(Msg)) {
@@ -67,7 +102,7 @@ fn update(model: Model, msg: Msg) -> #(Model, effect.Effect(Msg)) {
         update_physics(model, ctx)
         |> check_reset()
         |> shift_screen_if_needed()
-      // |> delete_and_add_platforms_if_needed()
+        |> remove_offscreen_platforms()
 
       #(Model(..model, input: input.end_frame(model.input)), effect.none())
     }
@@ -91,6 +126,19 @@ fn update(model: Model, msg: Msg) -> #(Model, effect.Effect(Msg)) {
       Model(..model, input: input.mouse_up(model.input, button)),
       effect.none(),
     )
+    InputCancelled -> #(
+      Model(
+        ..model,
+        input: input.clear(model.input),
+        charged_velocity: cancel_charge(model),
+      ),
+      effect.none(),
+    )
+    ViewportChanged(viewport_width, viewport_height) -> {
+      let #(renderer_width, renderer_height) =
+        renderer_size(viewport_width, viewport_height)
+      #(Model(..model, renderer_width:, renderer_height:), effect.none())
+    }
     ContextMenu -> #(model, effect.none())
     PlayerLandedPlatform -> {
       #(Model(..model, in_air: False), effect.none())
@@ -99,14 +147,14 @@ fn update(model: Model, msg: Msg) -> #(Model, effect.Effect(Msg)) {
 }
 
 fn shift_screen_if_needed(model: Model) -> Model {
-  let shift_amount = model.player_position.x +. 250.0
+  let shift_amount = model.player_position.x -. player_anchor_x
 
   case shift_amount >. 0.0 {
     True ->
       Model(
         ..model,
         player_position: vec3.Vec3(
-          -250.0,
+          player_anchor_x,
           model.player_position.y,
           model.player_position.z,
         ),
@@ -130,10 +178,10 @@ fn shift_screen_if_needed(model: Model) -> Model {
 
 fn check_reset(model: Model) -> Model {
   case box_touching_border(model.player_position), model.extra_lives > 0 {
-    True, False -> initial_model()
+    True, False -> reset_game(model)
     True, True ->
       Model(
-        ..initial_model(),
+        ..reset_game(model),
         extra_lives: model.extra_lives - 1,
         score: model.score,
       )
@@ -141,10 +189,18 @@ fn check_reset(model: Model) -> Model {
   }
 }
 
+fn reset_game(model: Model) -> Model {
+  Model(
+    ..initial_model(),
+    renderer_width: model.renderer_width,
+    renderer_height: model.renderer_height,
+  )
+}
+
 fn initial_model() -> Model {
   Model(
     time: 0.0,
-    player_position: vec3.Vec3(-250.0, 0.0, 0.0),
+    player_position: vec3.Vec3(player_anchor_x, 0.0, 0.0),
     input: input.new(),
     charged_velocity: 0.0,
     score: 0,
@@ -152,15 +208,18 @@ fn initial_model() -> Model {
     in_air: True,
     flying_velocity: vec2.Vec2(0.0, 0.0),
     platform_positions: [
-      Platform(0, vec3.Vec3(-250.0, -20.0, 0.0)),
+      Platform(0, vec3.Vec3(player_anchor_x, -20.0, 0.0)),
     ],
     last_scored_platform_id: 0,
     next_platform_id: 2,
+    renderer_width: renderer_max_width,
+    renderer_height: renderer_max_height,
   )
 }
 
 fn update_physics(model: Model, ctx: renderer.Tick) -> Model {
-  let delta_seconds = duration.to_seconds(ctx.delta_time)
+  let delta_seconds =
+    float.min(duration.to_seconds(ctx.delta_time), max_frame_delta_seconds)
 
   case model.in_air {
     // in air...
@@ -171,8 +230,8 @@ fn update_physics(model: Model, ctx: renderer.Tick) -> Model {
           Model(
             ..model,
             flying_velocity: vec2.Vec2(
-              model.charged_velocity,
-              model.charged_velocity *. 2.0,
+              model.charged_velocity *. horizontal_speed_per_charge,
+              model.charged_velocity *. 2.0 *. horizontal_speed_per_charge,
             ),
             charged_velocity: 0.0,
           )
@@ -217,11 +276,13 @@ fn update_physics(model: Model, ctx: renderer.Tick) -> Model {
                 ..model,
                 flying_velocity: vec2.Vec2(
                   model.flying_velocity.x,
-                  model.flying_velocity.y -. { 20.0 *. delta_seconds },
+                  model.flying_velocity.y -. { gravity *. delta_seconds },
                 ),
                 player_position: vec3.Vec3(
-                  model.player_position.x +. model.flying_velocity.x,
-                  model.player_position.y +. model.flying_velocity.y,
+                  model.player_position.x
+                    +. { model.flying_velocity.x *. delta_seconds },
+                  model.player_position.y
+                    +. { model.flying_velocity.y *. delta_seconds },
                   model.player_position.z,
                 ),
               )
@@ -251,9 +312,58 @@ fn update_physics(model: Model, ctx: renderer.Tick) -> Model {
   }
 }
 
+fn cancel_charge(model: Model) -> Float {
+  case model.in_air {
+    True -> model.charged_velocity
+    False -> 0.0
+  }
+}
+
+fn renderer_size(viewport_width: Int, viewport_height: Int) -> #(Int, Int) {
+  let available_width = int.max(1, viewport_width - page_horizontal_padding)
+  let available_height = int.max(1, viewport_height - interface_height)
+  let max_width = int.min(renderer_max_width, available_width)
+  let max_height = int.min(renderer_max_height, available_height)
+  let assert Ok(width_from_height) =
+    int.divide(max_height * renderer_aspect_width, renderer_aspect_height)
+  let width = int.max(1, int.min(max_width, width_from_height))
+  let assert Ok(height) =
+    int.divide(width * renderer_aspect_height, renderer_aspect_width)
+
+  #(width, height)
+}
+
+fn renderer_scale(model: Model) -> String {
+  float.to_string(
+    int.to_float(model.renderer_width) /. int.to_float(renderer_max_width),
+  )
+}
+
+fn charge_percentage(charged_velocity: Float) -> Float {
+  charged_velocity /. max_charge *. 100.0
+}
+
+fn charge_gradient_size(charged_velocity: Float) -> String {
+  let percentage = charge_percentage(charged_velocity)
+
+  case percentage >. 0.0 {
+    True -> float.to_string(10_000.0 /. percentage) <> "% 100%"
+    False -> "100% 100%"
+  }
+}
+
 fn jump_charge_held(input_state: input.InputState) -> Bool {
   input.is_pressed(input_state, input.Space)
   || input.is_mouse_pressed(input_state, input.LeftButton)
+}
+
+fn remove_offscreen_platforms(model: Model) -> Model {
+  Model(
+    ..model,
+    platform_positions: list.filter(model.platform_positions, fn(platform) {
+      platform.position.x >. platform_removal_x
+    }),
+  )
 }
 
 fn maybe_spawn_rightmost_platform(
@@ -360,7 +470,7 @@ fn box_touching_border(position: vec3.Vec3(Float)) -> Bool {
 }
 
 fn view(model: Model) {
-  html.div([attribute.style("max-width", "800px")], [
+  html.div([attribute.class("game-container")], [
     html.h1([attribute.style("text-align", "center")], [
       html.text(
         "Score: "
@@ -375,62 +485,82 @@ fn view(model: Model) {
           attribute.class("progress-bar"),
           attribute.style(
             "width",
-            float.to_string(model.charged_velocity /. max_charge *. 100.0)
-              <> "%",
+            float.to_string(charge_percentage(model.charged_velocity)) <> "%",
+          ),
+          attribute.style(
+            "background-size",
+            charge_gradient_size(model.charged_velocity),
           ),
         ],
         [],
       ),
     ]),
-    tiramisu.renderer(
-      "renderer",
+    html.div(
       [
-        renderer.on_tick(Tick),
-        renderer.width(800),
-        renderer.height(500),
-        event.prevent_default(input.on_contextmenu(ContextMenu)),
-        input.on_keyup(KeyUp),
-        input.on_pointerdown(MouseDown),
-        input.on_pointerup(MouseUp),
-        attribute.attribute("tabindex", "0"),
-        attribute.style("touch-action", "none"),
+        attribute.class("renderer-frame"),
+        attribute.style("width", int.to_string(model.renderer_width) <> "px"),
+        attribute.style("height", int.to_string(model.renderer_height) <> "px"),
       ],
       [
-        tiramisu.scene("scene", [scene.background_color(0xffffff)], [
-          tiramisu.camera(
-            "camera",
-            [
-              camera.active(True),
-              camera.orthographic(),
-              camera.left(-400.0),
-              camera.right(400.0),
-              camera.top(250.0),
-              camera.bottom(-250.0),
-              camera.near(0.1),
-              camera.far(20.0),
-              transform.position(vec3.Vec3(0.0, 0.0, 20.0)),
-            ],
-            [],
-          ),
-          tiramisu.primitive(
-            "box",
-            [
-              primitive.box(vec3.Vec3(20.0, 20.0, 1.0)),
-              transform.position(model.player_position),
-            ],
-            [],
-          ),
-          ..list.map(model.platform_positions, fn(platform_position) {
-            tiramisu.primitive(
-              "platform_" <> int.to_string(platform_position.id),
-              [
-                primitive.box(vec3.Vec3(50.0, 10.0, 1.0)),
-                transform.position(platform_position.position),
-              ],
-              [],
-            )
-          })
-        ]),
+        tiramisu.renderer(
+          "renderer",
+          [
+            renderer.on_tick(Tick),
+            renderer.width(renderer_max_width),
+            renderer.height(renderer_max_height),
+            event.prevent_default(input.on_keydown(KeyDown)),
+            input.on_keyup(KeyUp),
+            input.on_pointerdown(MouseDown),
+            input.on_pointerup(MouseUp),
+            input.on_pointercancel(InputCancelled),
+            event.on_blur(InputCancelled),
+            event.prevent_default(input.on_contextmenu(ContextMenu)),
+            attribute.attribute("tabindex", "0"),
+            attribute.style("touch-action", "none"),
+            attribute.style(
+              "transform",
+              "scale(" <> renderer_scale(model) <> ")",
+            ),
+            attribute.style("transform-origin", "top left"),
+          ],
+          [
+            tiramisu.scene("scene", [scene.background_color(0xffffff)], [
+              tiramisu.camera(
+                "camera",
+                [
+                  camera.active(True),
+                  camera.orthographic(),
+                  camera.left(-400.0),
+                  camera.right(400.0),
+                  camera.top(250.0),
+                  camera.bottom(-250.0),
+                  camera.near(0.1),
+                  camera.far(20.0),
+                  transform.position(vec3.Vec3(0.0, 0.0, 20.0)),
+                ],
+                [],
+              ),
+              tiramisu.primitive(
+                "box",
+                [
+                  primitive.box(vec3.Vec3(20.0, 20.0, 1.0)),
+                  transform.position(model.player_position),
+                ],
+                [],
+              ),
+              ..list.map(model.platform_positions, fn(platform_position) {
+                tiramisu.primitive(
+                  "platform_" <> int.to_string(platform_position.id),
+                  [
+                    primitive.box(vec3.Vec3(50.0, 10.0, 1.0)),
+                    transform.position(platform_position.position),
+                  ],
+                  [],
+                )
+              })
+            ]),
+          ],
+        ),
       ],
     ),
   ])

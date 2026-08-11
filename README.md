@@ -5,7 +5,11 @@
 
 ## About
 
-A simple game where you hold space bar to charge a cubes jump and try to land on as many platforms in a row as possible without falling.
+A simple game where you charge a cube's jump and try to land on as many platforms in a row as possible without falling.
+
+## Controls
+
+Hold `Space`, the primary mouse button, or one finger on the game area to charge a jump. Release to jump.
 
 ## Development
 

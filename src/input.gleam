@@ -166,6 +166,20 @@ pub fn new() -> InputState {
   )
 }
 
+/// Clear all held and per-frame input after a cancelled pointer or lost focus.
+pub fn clear(state: InputState) -> InputState {
+  InputState(
+    ..state,
+    pressed: set.new(),
+    just_pressed: set.new(),
+    just_released: set.new(),
+    mouse_buttons: set.new(),
+    mouse_just_pressed: set.new(),
+    mouse_just_released: set.new(),
+    mouse_wheel: 0.0,
+  )
+}
+
 /// Record a key press. Call this from your `KeyDown` message handler.
 ///
 /// Ignores browser key repeat — if the key is already held, this is a no-op.
@@ -351,6 +365,11 @@ pub fn on_pointerup(msg: fn(MouseButton) -> msg) -> Attribute(msg) {
     use button_int <- decode.field("button", decode.int)
     button_int |> int_to_button |> msg |> decode.success
   })
+}
+
+/// Lustre attribute that listens for cancelled touch or pen input.
+pub fn on_pointercancel(msg: msg) -> Attribute(msg) {
+  event.on("pointercancel", msg |> decode.success)
 }
 
 /// Lustre attribute that listens for wheel events and provides the vertical

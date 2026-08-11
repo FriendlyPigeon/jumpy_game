@@ -5,14 +5,26 @@
   border-radius: 10px;
 }
 
+.game-container {
+  width: min(800px, calc(100vw - 24px));
+  margin: 0 auto;
+}
+
 .progress-bar-container {
-  width: 800px;
+  width: 100%;
+  box-sizing: border-box;
   background-color: #ddd;
   border-radius: 10px;
   padding: 3px;
 }
 
+.renderer-frame {
+  overflow: hidden;
+  margin: 0 auto;
+}
+
 #renderer {
+  display: block;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;

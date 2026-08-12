@@ -420,6 +420,7 @@ fn view(model: Model) {
         renderer.width(800),
         renderer.height(500),
         event.prevent_default(input.on_contextmenu(ContextMenu)),
+        input.on_keydown(KeyDown),
         input.on_keyup(KeyUp),
         input.on_pointerdown(MouseDown),
         input.on_pointerup(MouseUp),

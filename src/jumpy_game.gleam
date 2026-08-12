@@ -1,3 +1,4 @@
+import gleam/dynamic/decode
 import gleam/float
 import gleam/int
 import gleam/list
@@ -18,6 +19,23 @@ import vec/vec2
 import vec/vec3
 
 const max_charge = 5.0
+
+// World/camera bounds (matches the orthographic camera in `view`).
+const camera_left = -400.0
+
+const camera_right = 400.0
+
+const camera_top = 250.0
+
+const camera_bottom = -250.0
+
+// The player is locked to this x coordinate; keeping it near the left edge
+// gives mobile players more advance warning of upcoming platforms.
+const player_anchor_x = -320.0
+
+const player_half_size = 10.0
+
+const platform_half_width = 25.0
 
 type Platform {
   Platform(id: Int, position: vec3.Vec3(Float))
@@ -52,6 +70,7 @@ type Msg {
   KeyUp(input.Key)
   MouseDown(input.MouseButton)
   MouseUp(input.MouseButton)
+  TouchMove
   ContextMenu
   PlayerLandedPlatform
 }
@@ -91,6 +110,7 @@ fn update(model: Model, msg: Msg) -> #(Model, effect.Effect(Msg)) {
       Model(..model, input: input.mouse_up(model.input, button)),
       effect.none(),
     )
+    TouchMove -> #(model, effect.none())
     ContextMenu -> #(model, effect.none())
     PlayerLandedPlatform -> {
       #(Model(..model, in_air: False), effect.none())
@@ -99,14 +119,14 @@ fn update(model: Model, msg: Msg) -> #(Model, effect.Effect(Msg)) {
 }
 
 fn shift_screen_if_needed(model: Model) -> Model {
-  let shift_amount = model.player_position.x +. 250.0
+  let shift_amount = model.player_position.x -. player_anchor_x
 
   case shift_amount >. 0.0 {
     True ->
       Model(
         ..model,
         player_position: vec3.Vec3(
-          -250.0,
+          player_anchor_x,
           model.player_position.y,
           model.player_position.z,
         ),
@@ -144,7 +164,7 @@ fn check_reset(model: Model) -> Model {
 fn initial_model() -> Model {
   Model(
     time: 0.0,
-    player_position: vec3.Vec3(-250.0, 0.0, 0.0),
+    player_position: vec3.Vec3(player_anchor_x, 0.0, 0.0),
     input: input.new(),
     charged_velocity: 0.0,
     score: 0,
@@ -152,7 +172,7 @@ fn initial_model() -> Model {
     in_air: True,
     flying_velocity: vec2.Vec2(0.0, 0.0),
     platform_positions: [
-      Platform(0, vec3.Vec3(-250.0, -20.0, 0.0)),
+      Platform(0, vec3.Vec3(player_anchor_x, -20.0, 0.0)),
     ],
     last_scored_platform_id: 0,
     next_platform_id: 2,
@@ -263,18 +283,27 @@ fn maybe_spawn_rightmost_platform(
   case landed_platform.id == rightmost_platform_id(model.platform_positions) {
     True -> {
       let x_variance = { float.random() -. 0.5 } *. 120.0
+      let spawn_x = landed_platform.position.x +. 280.0 +. x_variance
+
+      // Keep the platform fully inside the horizontal canvas bounds.
+      let clamped_x =
+        spawn_x
+        |> float.min(camera_right -. platform_half_width)
+        |> float.max(camera_left +. platform_half_width)
+
+      // Keep platforms within the vertical canvas with a small margin so they
+      // are always visible on both desktop and mobile screens.
+      let spawn_y =
+        landed_platform.position.y +. { float.random() -. 0.5 } *. 160.0
+      let clamped_y =
+        spawn_y
+        |> float.min(camera_top -. 50.0)
+        |> float.max(camera_bottom +. 50.0)
 
       Model(
         ..model,
         platform_positions: list.append(model.platform_positions, [
-          Platform(
-            model.next_platform_id,
-            vec3.Vec3(
-              landed_platform.position.x +. 280.0 +. x_variance,
-              { float.random() -. 0.5 } *. 200.0,
-              0.0,
-            ),
-          ),
+          Platform(model.next_platform_id, vec3.Vec3(clamped_x, clamped_y, 0.0)),
         ]),
         next_platform_id: model.next_platform_id + 1,
       )
@@ -356,12 +385,14 @@ fn player_touching_platform(model: Model) -> Bool {
 }
 
 fn box_touching_border(position: vec3.Vec3(Float)) -> Bool {
-  position.x <=. -390.0 || position.x >=. 390.0 || position.y <=. -240.0
+  position.x <=. camera_left +. player_half_size
+  || position.x >=. camera_right -. player_half_size
+  || position.y <=. camera_bottom +. player_half_size
 }
 
 fn view(model: Model) {
-  html.div([attribute.style("max-width", "800px")], [
-    html.h1([attribute.style("text-align", "center")], [
+  html.div([attribute.class("game-container")], [
+    html.h1([attribute.class("game-header")], [
       html.text(
         "Score: "
         <> int.to_string(model.score)
@@ -392,6 +423,7 @@ fn view(model: Model) {
         input.on_keyup(KeyUp),
         input.on_pointerdown(MouseDown),
         input.on_pointerup(MouseUp),
+        event.prevent_default(event.on("touchmove", decode.success(TouchMove))),
         attribute.attribute("tabindex", "0"),
         attribute.style("touch-action", "none"),
       ],
@@ -402,10 +434,10 @@ fn view(model: Model) {
             [
               camera.active(True),
               camera.orthographic(),
-              camera.left(-400.0),
-              camera.right(400.0),
-              camera.top(250.0),
-              camera.bottom(-250.0),
+              camera.left(camera_left),
+              camera.right(camera_right),
+              camera.top(camera_top),
+              camera.bottom(camera_bottom),
               camera.near(0.1),
               camera.far(20.0),
               transform.position(vec3.Vec3(0.0, 0.0, 20.0)),

@@ -26,8 +26,65 @@ stylesheets = [
   { href = "/styles.css" }
 ]
 
+meta = [
+  { name = "theme-color", content = "#ffffff" },
+  { name = "apple-mobile-web-app-capable", content = "yes" },
+  { name = "mobile-web-app-capable", content = "yes" },
+  { name = "apple-mobile-web-app-status-bar-style", content = "default" },
+]
+
 scripts = [
-  { type = "importmap", content = "{ \"imports\": { \"three\": \"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js\", \"three/addons/\": \"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/\" } }" }
+  { type = "importmap", content = "{ \"imports\": { \"three\": \"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js\", \"three/addons/\": \"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/\" } }" },
+  { type = "module", content = """
+(function () {
+  function fitRenderer() {
+    const renderer = document.getElementById('renderer');
+    if (!renderer) return;
+
+    const padding = 16;
+    const headerHeight = 120;
+    const designWidth = 800;
+    const designHeight = 500;
+
+    const availableWidth = window.innerWidth - padding;
+    const availableHeight = window.innerHeight - padding - headerHeight;
+
+    const scale = Math.min(
+      1,
+      availableWidth / designWidth,
+      availableHeight / designHeight
+    );
+
+    const width = Math.max(1, Math.round(designWidth * scale));
+    const height = Math.max(1, Math.round(designHeight * scale));
+
+    renderer.setAttribute('width', String(width));
+    renderer.setAttribute('height', String(height));
+  }
+
+  function fitProgressBar() {
+    const container = document.querySelector('.progress-bar-container');
+    if (!container) return;
+    container.style.setProperty('--progress-bar-width', container.clientWidth + 'px');
+  }
+
+  function fit() {
+    fitRenderer();
+    fitProgressBar();
+  }
+
+  const observer = new MutationObserver(function () {
+    if (document.getElementById('renderer')) {
+      fit();
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+
+  window.addEventListener('resize', fit);
+  window.addEventListener('orientationchange', fit);
+  fit();
+})();
+""" }
 ]
 
 [dev-dependencies]
